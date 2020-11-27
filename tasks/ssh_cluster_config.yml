@@ -46,6 +46,7 @@
       {% for host in groups[pve_group] %}
       Match Address {{ hostvars[host].pve_cluster_ssh_addrs | join(",") }}
       PermitRootLogin prohibit-password
+      AllowGroups root
       {% endfor %}
     validate: "/usr/sbin/sshd -t -f %s"
   notify:
