@@ -1,18 +1,36 @@
-[![Build Status](https://travis-ci.org/lae/ansible-role-proxmox.svg?branch=master)](https://travis-ci.org/lae/ansible-role-proxmox)
 [![Galaxy Role](https://img.shields.io/badge/ansible--galaxy-proxmox-blue.svg)](https://galaxy.ansible.com/lae/proxmox/)
 
 lae.proxmox
 ===========
 
-Installs and configures a Proxmox 5.x/6.x cluster with the following features:
+Installs and configures Proxmox Virtual Environment 6.x/7.x on Debian servers.
 
-- Ensures all hosts can connect to one another as root
-- Ability to create/manage groups, users, access control lists and storage
-- Ability to create or add nodes to a PVE cluster
-- Ability to setup Ceph on the nodes
-- IPMI watchdog support
-- BYO HTTPS certificate support
-- Ability to use either `pve-no-subscription` or `pve-enterprise` repositories
+This role allows you to deploy and manage single-node PVE installations and PVE
+clusters (3+ nodes) on Debian Buster (10) and Bullseye (11). You are able to
+configure the following with the assistance of this role:
+
+  - PVE RBAC definitions (roles, groups, users, and access control lists)
+  - PVE Storage definitions
+  - [`datacenter.cfg`][datacenter-cfg]
+  - HTTPS certificates for the Proxmox Web GUI (BYO)
+  - PVE repository selection (e.g. `pve-no-subscription` or `pve-enterprise`)
+  - Watchdog modules (IPMI and NMI) with applicable pve-ha-manager config
+  - ZFS module setup and ZED notification email
+
+With clustering enabled, this role does (or allows you to do) the following:
+
+  - Ensure all hosts can connect to one another as root over SSH
+  - Initialize a new PVE cluster (or possibly adopt an existing one)
+  - Create or add new nodes to a PVE cluster
+  - Setup Ceph on a PVE cluster
+  - Create and manage high availability groups
+
+## Support/Contributing
+
+For support or if you'd like to contribute to this role but want guidance, feel
+free to join this Discord server: https://discord.gg/cjqr6Fg. Please note, this
+is an temporary invite, so you'll need to wait for @lae to assign you a role,
+otherwise Discord will remove you from the server when you logout.
 
 ## Quickstart
 
@@ -30,20 +48,15 @@ Copy the following playbook to a file like `install_proxmox.yml`:
     - hosts: all
       become: True
       roles:
-        - {
-            role: geerlingguy.ntp,
-            ntp_manage_config: true,
-            ntp_servers: [
-              clock.sjc.he.net,
-              clock.fmt.he.net,
-              clock.nyc.he.net
-            ]
-          }
-        - {
-            role: lae.proxmox,
-            pve_group: all,
-            pve_reboot_on_kernel_update: true
-          }
+        - role: geerlingguy.ntp
+            ntp_manage_config: true
+            ntp_servers:
+              - clock.sjc.he.net,
+              - clock.fmt.he.net,
+              - clock.nyc.he.net
+        - role: lae.proxmox
+            - pve_group: all
+            - pve_reboot_on_kernel_update: true
 
 Install this role and a role for configuring NTP:
 
@@ -63,12 +76,7 @@ file containing a list of hosts).
 Once complete, you should be able to access your Proxmox VE instance at
 `https://$SSH_HOST_FQDN:8006`.
 
-## Support/Contributing
-
-For support or if you'd like to contribute to this role but want guidance, feel
-free to join this Discord server: https://discord.gg/cjqr6Fg
-
-## Deploying a fully-featured PVE 5.x cluster
+## Deploying a fully-featured PVE 7.x cluster
 
 Create a new playbook directory. We call ours `lab-cluster`. Our playbook will
 eventually look like this, but yours does not have to follow all of the steps:
@@ -148,7 +156,6 @@ Now for the flesh of your playbook, `pve01`'s group variables. Create a file
 ```
 ---
 pve_group: pve01
-pve_fetch_directory: "fetch/{{ pve_group }}/"
 pve_watchdog: ipmi
 pve_ssl_private_key: "{{ lookup('file', pve_group + '/' + inventory_hostname + '.key') }}"
 pve_ssl_certificate: "{{ lookup('file', pve_group + '/' + inventory_hostname + '.pem') }}"
@@ -185,12 +192,8 @@ interfaces_template: "interfaces-{{ pve_group }}.j2"
 `pve_group` is set to the group name of our cluster, `pve01` - it will be used
 for the purposes of ensuring all hosts within that group can connect to each
 other and are clustered together. Note that the PVE cluster name will be set to
-this group name as well, unless otherwise specified by `pve_clustername`.
+this group name as well, unless otherwise specified by `pve_cluster_clustername`.
 Leaving this undefined will default to `proxmox`.
-
-`pve_fetch_directory` will be used to download the host public key and root user's
-public key from all hosts within `pve_group`. These are then uploaded to each
-host into the appropriate configuration files.
 
 `pve_watchdog` here enables IPMI watchdog support and configures PVE's HA
 manager to use it. Leave this undefined if you don't want to configure it.
@@ -199,10 +202,6 @@ manager to use it. Leave this undefined if you don't want to configure it.
 pvecluster. Here, a file lookup is used to read the contents of a file in the
 playbook, e.g. `files/pve01/lab-node01.key`. You could possibly just use host
 variables instead of files, if you prefer.
-
-`pve_ssl_letsencrypt` allows to obtain a Let's Encrypt SSL certificate for
-pvecluster. The Ansible role [systemli.letsencrypt](https://galaxy.ansible.com/systemli/letsencrypt/)
-needs to be installed first in order to use this function.
 
 `pve_cluster_enabled` enables the role to perform all cluster management tasks.
 This includes creating a cluster if it doesn't exist, or adding nodes to the
@@ -214,8 +213,8 @@ must already exist) to access PVE and gives them the Administrator role as part
 of the `ops` group. Read the **User and ACL Management** section for more info.
 
 `pve_storages` allows to create different types of storage and configure them.
-The backend needs to be supported by [Proxmox](https://pve.proxmox.com/pve-docs/chapter-pvesm.html).
-Read the **Storage Management** section for more info.
+The backend needs to be supported by [Proxmox][pvesm]. Read the **Storage
+Management** section for more info.
 
 `pve_ssh_port` allows you to change the SSH port. If your SSH is listening on
 a port other than the default 22, please set this variable. If a new node is
@@ -225,7 +224,7 @@ joining the cluster, the PVE cluster needs to communicate once via SSH.
 would make to your SSH server config. This is useful if you use another role
 to manage your SSH server. Note that setting this to false is not officially
 supported, you're on your own to replicate the changes normally made in
-ssh_cluster_config.yml.
+`ssh_cluster_config.yml` and `pve_add_node.yml`.
 
 `interfaces_template` is set to the path of a template we'll use for configuring
 the network on these Debian machines. This is only necessary if you want to
@@ -359,36 +358,31 @@ serially during a maintenance period.) It will also enable the IPMI watchdog.
     - hosts: pve01
       become: True
       roles:
-        - {
-            role: geerlingguy.ntp,
-            ntp_manage_config: true,
-            ntp_servers: [
-              clock.sjc.he.net,
-              clock.fmt.he.net,
-              clock.nyc.he.net
-            ]
-          }
-        - {
-            role: lae.proxmox,
-            pve_group: pve01,
-            pve_cluster_enabled: yes,
-            pve_reboot_on_kernel_update: true,
+        - role: geerlingguy.ntp
+            ntp_manage_config: true
+            ntp_servers:
+              - clock.sjc.he.net,
+              - clock.fmt.he.net,
+              - clock.nyc.he.net
+        - role: lae.proxmox
+            pve_group: pve01
+            pve_cluster_enabled: yes
+            pve_reboot_on_kernel_update: true
             pve_watchdog: ipmi
-          }
 
 ## Role Variables
 
 ```
 [variable]: [default] #[description/purpose]
 pve_group: proxmox # host group that contains the Proxmox hosts to be clustered together
-pve_fetch_directory: fetch/ # local directory used to download root public keys from each host to
-pve_repository_line: "deb http://download.proxmox.com/debian/pve stretch pve-no-subscription" # apt-repository configuration - change to enterprise if needed (although TODO further configuration may be needed)
+pve_repository_line: "deb http://download.proxmox.com/debian/pve bullseye pve-no-subscription" # apt-repository configuration - change to enterprise if needed (although TODO further configuration may be needed)
 pve_remove_subscription_warning: true # patches the subscription warning messages in proxmox if you are using the community edition
 pve_extra_packages: [] # Any extra packages you may want to install, e.g. ngrep
 pve_run_system_upgrades: false # Let role perform system upgrades
 pve_run_proxmox_upgrades: true # Let role perform Proxmox VE upgrades
 pve_check_for_kernel_update: true # Runs a script on the host to check kernel versions
 pve_reboot_on_kernel_update: false # If set to true, will automatically reboot the machine on kernel updates
+pve_reboot_on_kernel_update_delay: 60 # Number of seconds to wait before and after a reboot process to proceed with next task in cluster mode
 pve_remove_old_kernels: true # Currently removes kernel from main Debian repository
 pve_watchdog: none # Set this to "ipmi" if you want to configure a hardware watchdog. Proxmox uses a software watchdog (nmi_watchdog) by default.
 pve_watchdog_ipmi_action: power_cycle # Can be one of "reset", "power_cycle", and "power_off".
@@ -396,11 +390,14 @@ pve_watchdog_ipmi_timeout: 10 # Number of seconds the watchdog should wait
 pve_zfs_enabled: no # Specifies whether or not to install and configure ZFS packages
 # pve_zfs_options: "" # modprobe parameters to pass to zfs module on boot/modprobe
 # pve_zfs_zed_email: "" # Should be set to an email to receive ZFS notifications
+pve_zfs_create_volumes: [] # List of ZFS Volumes to create (to use as PVE Storages). See section on Storage Management.
 pve_ceph_enabled: false # Specifies wheter or not to install and configure Ceph packages. See below for an example configuration.
-pve_ceph_repository_line: "deb http://download.proxmox.com/debian/ceph-nautilus buster main" # apt-repository configuration. Will be automatically set for 5.x and 6.x (Further information: https://pve.proxmox.com/wiki/Package_Repositories)
+pve_ceph_repository_line: "deb http://download.proxmox.com/debian/ceph-pacific bullseye main" # apt-repository configuration. Will be automatically set for 6.x and 7.x (Further information: https://pve.proxmox.com/wiki/Package_Repositories)
 pve_ceph_network: "{{ (ansible_default_ipv4.network +'/'+ ansible_default_ipv4.netmask) | ipaddr('net') }}" # Ceph public network
 # pve_ceph_cluster_network: "" # Optional, if the ceph cluster network is different from the public network (see https://pve.proxmox.com/pve-docs/chapter-pveceph.html#pve_ceph_install_wizard)
+pve_ceph_nodes: "{{ pve_group }}" # Host group containing all Ceph nodes
 pve_ceph_mon_group: "{{ pve_group }}" # Host group containing all Ceph monitor hosts
+pve_ceph_mgr_group: "{{ pve_ceph_mon_group }}" # Host group containing all Ceph manager hosts
 pve_ceph_mds_group: "{{ pve_group }}" # Host group containing all Ceph metadata server hosts
 pve_ceph_osds: [] # List of OSD disks
 pve_ceph_pools: [] # List of pools to create
@@ -408,7 +405,7 @@ pve_ceph_fs: [] # List of CephFS filesystems to create
 pve_ceph_crush_rules: [] # List of CRUSH rules to create
 # pve_ssl_private_key: "" # Should be set to the contents of the private key to use for HTTPS
 # pve_ssl_certificate: "" # Should be set to the contents of the certificate to use for HTTPS
-pve_ssl_letsencrypt: false # Specifies whether or not to obtain a SSL certificate using Let's Encrypt
+pve_roles: [] # Added more roles with specific privileges. See section on User Management.
 pve_groups: [] # List of group definitions to manage in PVE. See section on User Management.
 pve_users: [] # List of user definitions to manage in PVE. See section on User Management.
 pve_storages: [] # List of storages to manage in PVE. See section on Storage Management.
@@ -420,6 +417,7 @@ To enable clustering with this role, configure the following variables appropria
 ```
 pve_cluster_enabled: no # Set this to yes to configure hosts to be clustered together
 pve_cluster_clustername: "{{ pve_group }}" # Should be set to the name of the PVE cluster
+pve_manage_hosts_enabled : yes # Set this to no to NOT configure hosts file (case of using vpn and hosts file is already configured)
 ```
 
 The following variables are used to provide networking information to corosync.
@@ -455,8 +453,8 @@ pve_cluster_ha_groups:
     restricted: 0
 ```
 
-All configuration options supported in the datacenter.cfg file are documented in the
-[Proxmox manual datacenter.cfg section][datacenter-cfg].
+All configuration options supported in the datacenter.cfg file are documented
+in the [Proxmox manual datacenter.cfg section][datacenter-cfg].
 
 In order for live reloading of network interfaces to work via the PVE web UI,
 you need to install the `ifupdown2` package. Note that this will remove
@@ -513,10 +511,19 @@ pve_users:
 Refer to `library/proxmox_user.py` [link][user-module] and
 `library/proxmox_group.py` [link][group-module] for module documentation.
 
-For managing ACLs, a similar module is employed, but the main difference is that
-most of the parameters only accept lists (subject to change):
+For managing roles and ACLs, a similar module is employed, but the main
+difference is that most of the parameters only accept lists (subject to
+change):
 
 ```
+pve_roles:
+  - name: Monitoring
+    privileges:
+      - "Sys.Modify"
+      - "Sys.Audit"
+      - "Datastore.Audit"
+      - "VM.Monitor"
+      - "VM.Audit"
 pve_acls:
   - path: /
     roles: [ "Administrator" ]
@@ -529,13 +536,14 @@ pve_acls:
       - test_users
 ```
 
-Refer to `library/proxmox_acl.py` [link][acl-module] for module documentation.
+Refer to `library/proxmox_role.py` [link][user-module] and
+`library/proxmox_acl.py` [link][acl-module] for module documentation.
 
 ## Storage Management
 
 You can use this role to manage storage within Proxmox VE (both in
 single server deployments and cluster deployments). For now, the only supported
-types are `dir`, `rbd`, `nfs`, `lvm` and `lvmthin`.
+types are `dir`, `rbd`, `nfs`, `cephfs`, `lvm`,`lvmthin`, and `zfspool`.
 Here are some examples.
 
 ```
@@ -571,6 +579,34 @@ pve_storages:
     content: [ "images", "rootdir" ]
     vgname: vg2
     thinpool: data
+  - name: cephfs1
+    type: cephfs
+    content: [ "snippets", "vztmpl", "iso" ]
+    nodes: [ "lab-node01.local", "lab-node02.local" ]
+    monhost:
+      - 10.0.0.1
+      - 10.0.0.2
+      - 10.0.0.3
+  - name: zfs1
+    type: zfspool
+    content: [ "images", "rootdir" ]
+    pool: rpool/data
+    sparse: true
+```
+
+Currently the `zfspool` type can be used only for `images` and `rootdir` contents.
+If you want to store the other content types on a ZFS volume, you need to specify
+them with type `dir`, path `/<POOL>/<VOLUME>` and add an entry in
+`pve_zfs_create_volumes`. This example adds a `iso` storage on a ZFS pool:
+
+```
+pve_zfs_create_volumes:
+  - rpool/iso
+pve_storages:
+  - name: iso
+    type: dir
+    path: /rpool/iso
+    content: [ "iso" ]
 ```
 
 Refer to `library/proxmox_storage.py` [link][storage-module] for module
@@ -595,6 +631,7 @@ following definitions show some of the configurations that are possible.
 pve_ceph_enabled: true
 pve_ceph_network: '172.10.0.0/24'
 pve_ceph_cluster_network: '172.10.1.0/24'
+pve_ceph_nodes: "ceph_nodes"
 pve_ceph_osds:
   # OSD with everything on the same device
   - device: /dev/sdc
@@ -609,7 +646,8 @@ pve_ceph_osds:
     block.db: /dev/sdb1
     encrypted: true
 # Crush rules for different storage classes
-# By default 'type' is set to host, you can find valid types at (https://docs.ceph.com/en/latest/rados/operations/crush-map/)
+# By default 'type' is set to host, you can find valid types at
+# (https://docs.ceph.com/en/latest/rados/operations/crush-map/)
 # listed under 'TYPES AND BUCKETS'
 pve_ceph_crush_rules:
   - name: replicated_rule
@@ -638,6 +676,13 @@ pve_ceph_pools:
     storage: true
     size: 2
     min-size: 1
+# This Ceph pool uses custom autoscale mode : "off" | "on" | "warn"> (default = "warn")
+  - name: vm-storage
+    pgs: 128
+    rule: replicated_rule
+    application: rbd
+    autoscale_mode: "on"
+    storage: true
 pve_ceph_fs:
 # A CephFS filesystem not defined as a Proxmox storage
   - name: backup
@@ -650,13 +695,40 @@ pve_ceph_fs:
 `pve_ceph_network` by default uses the `ipaddr` filter, which requires the
 `netaddr` library to be installed and usable by your Ansible controller.
 
-`pve_ceph_osds` by default creates unencrypted ceph volumes. To use encrypted volumes the parameter `encrypted` has to be set per drive to `true`.
+`pve_ceph_nodes` by default uses `pve_group`, this parameter allows to specify
+on which nodes install Ceph (e.g. if you don't want to install Ceph on all your
+nodes).
+
+`pve_ceph_osds` by default creates unencrypted ceph volumes. To use encrypted
+volumes the parameter `encrypted` has to be set per drive to `true`.
+
+## Developer Notes
+
+When developing new features or fixing something in this role, you can test out
+your changes by using Vagrant (only libvirt is supported currently). The
+playbook can be found in `tests/vagrant` (so be sure to modify group variables
+as needed). Be sure to test any changes on both Debian 10 and 11 (update the
+Vagrantfile locally to use `debian/buster64`) before submitting a PR.
+
+You can also specify an apt caching proxy (e.g. `apt-cacher-ng`, and it must
+run on port 3142) with the `APT_CACHE_HOST` environment variable to speed up
+package downloads if you have one running locally in your environment. The
+vagrant playbook will detect whether or not the caching proxy is available and
+only use it if it is accessible from your network, so you could just
+permanently set this variable in your development environment if you prefer.
+
+For example, you could run the following to show verbose/easier to read output,
+use a caching proxy, and keep the VMs running if you run into an error (so that
+you can troubleshoot it and/or run `vagrant provision` after fixing):
+
+    APT_CACHE_HOST=10.71.71.10 ANSIBLE_STDOUT_CALLBACK=debug vagrant up --no-destroy-on-error
 
 ## Contributors
 
 Musee Ullah ([@lae](https://github.com/lae), <lae@lae.is>) - Main developer  
 Fabien Brachere ([@Fbrachere](https://github.com/Fbrachere)) - Storage config support  
 Gaudenz Steinlin ([@gaundez](https://github.com/gaudenz)) - Ceph support, etc  
+Richard Scott ([@zenntrix](https://github.com/zenntrix)) - Ceph support, PVE 7.x support, etc  
 Thoralf Rickert-Wendt ([@trickert76](https://github.com/trickert76)) - PVE 6.x support, etc  
 Engin Dumlu ([@roadrunner](https://github.com/roadrunner))  
 Jonas Meurer ([@mejo-](https://github.com/mejo-))  
@@ -668,6 +740,7 @@ Michael Holasek ([@mholasek](https://github.com/mholasek))
 [pve-cluster]: https://pve.proxmox.com/wiki/Cluster_Manager
 [install-ansible]: http://docs.ansible.com/ansible/intro_installation.html
 [pvecm-network]: https://pve.proxmox.com/pve-docs/chapter-pvecm.html#_separate_cluster_network
+[pvesm]: https://pve.proxmox.com/pve-docs/chapter-pvesm.html
 [user-module]: https://github.com/lae/ansible-role-proxmox/blob/master/library/proxmox_user.py
 [group-module]: https://github.com/lae/ansible-role-proxmox/blob/master/library/proxmox_group.py
 [acl-module]: https://github.com/lae/ansible-role-proxmox/blob/master/library/proxmox_group.py

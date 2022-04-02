@@ -22,7 +22,7 @@ options:
     type:
         required: true
         aliases: [ "storagetype" ]
-        choices: [ "dir", "nfs", "rbd", "lvm", "lvmthin" ]
+        choices: [ "dir", "nfs", "rbd", "lvm", "lvmthin", "cephfs", "zfspool" ]
         description:
             - Type of storage, must be supported by Proxmox.
     disable:
@@ -54,7 +54,7 @@ options:
     pool:
         required: false
         description:
-            - Ceph pool name.
+            - Ceph/ZFS pool name.
     monhost:
         required: false
         type: list
@@ -94,6 +94,10 @@ options:
         required: false
         description:
             - The name of the LVM thin pool.
+    sparse:
+        required: false
+        description:
+            - Use ZFS thin-provisioning.
 
 author:
     - Fabien Brachere (@fbrachere)
@@ -140,6 +144,23 @@ EXAMPLES = '''
     content: [ "images", "rootdir" ]
     vgname: vg2
     thinpool: data
+- name: Create an CephFS storage type
+  proxmox_storage:
+    name: cephfs1
+    type: cephfs
+    content: [ "snippets", "vztmpl", "iso" ]
+    nodes: [ "proxmox1", "proxmox2"]
+    monhost:
+      - 10.0.0.1
+      - 10.0.0.2
+      - 10.0.0.3
+- name: Create a ZFS storage type
+  proxmox_storage:
+    name: zfs1
+    type: zfspool
+    content: [ "images", "rootdir" ]
+    pool: rpool/data
+    sparse: true
 '''
 
 RETURN = '''
@@ -170,6 +191,7 @@ class ProxmoxStorage(object):
         self.options = module.params['options']
         self.vgname = module.params['vgname']
         self.thinpool = module.params['thinpool']
+        self.sparse = module.params['sparse']
 
         try:
             self.existing_storages = pvesh.get("storage")
@@ -225,6 +247,8 @@ class ProxmoxStorage(object):
             args['vgname'] = self.vgname
         if self.thinpool is not None:
             args['thinpool'] = self.thinpool
+        if self.sparse is not None:
+            args['sparse'] = self.sparse
 
         if self.maxfiles is not None and 'backup' not in self.content:
             self.module.fail_json(msg="maxfiles is not allowed when there is no 'backup' in content")
@@ -297,7 +321,8 @@ def main():
         content=dict(type='list', required=True, aliases=['storagetype']),
         nodes=dict(type='list', required=False, default=None),
         type=dict(default=None, type='str', required=True,
-                  choices=["dir", "nfs", "rbd", "lvm", "lvmthin"]),
+                  choices=["dir", "nfs", "rbd", "lvm", "lvmthin", "cephfs",
+                           "zfspool"]),
         disable=dict(required=False, type='bool', default=False),
         state=dict(default='present', choices=['present', 'absent'], type='str'),
         path=dict(default=None, required=False, type='str'),
@@ -311,17 +336,20 @@ def main():
         options=dict(default=None, type='str', required=False),
         vgname=dict(default=None, type='str', required=False),
         thinpool=dict(default=None, type='str', required=False),
+        sparse=dict(default=None, type='bool', required=False),
     )
 
     module = AnsibleModule(
         argument_spec=module_args,
         supports_check_mode=True,
         required_if=[
+            ["type", "cephfs", ["content"]],
             ["type", "dir", ["path", "content"]],
-            ["type", "rbd", ["pool", "content", "monhost", "username"]],
+            ["type", "rbd", ["pool", "content"]],
             ["type", "nfs", ["server", "content", "export"]],
             ["type", "lvm", ["vgname", "content"]],
             ["type", "lvmthin", ["vgname", "thinpool", "content"]],
+            ["type", "zfspool", ["pool", "content"]],
         ]
     )
     storage = ProxmoxStorage(module)
