@@ -70,3 +70,15 @@
     create: yes
     mode: 0644
     dest: /root/.ssh/config
+
+- name: Check for locked root account
+  ansible.builtin.command: "grep -qE '^root:!:' /etc/shadow"
+  register: _root_locked
+  changed_when: _root_locked.rc == 0
+  failed_when: "_root_locked.rc not in [ 0, 1 ]"
+
+- name: Unlock root user
+  ansible.builtin.user:
+    name: root
+    password: '*'
+  when: _root_locked.rc == 0
