@@ -12,6 +12,9 @@ pve_zfs_zed_email: root@localhost
 pve_cluster_enabled: yes
 pve_datacenter_cfg:
   console: xtermjs
+pve_pools:
+  - name: customer01
+    comment: Pool for customer01
 pve_groups:
   - name: Admins
     comment: Administrators of this PVE cluster
@@ -55,6 +58,14 @@ pve_storages:
     type: dir
     content: [ "iso", "vztmpl", "backup" ]
     path: /testpool/zfs2
+  - name: disabled-dir
+    type: dir
+    disable: yes
+    content: [ "images" ]
+    path: /tmp/fakedir
+  - name: no-content-dir
+    type: dir
+    path: /tmp/fakedir2
 pve_zfs_create_volumes:
   - testpool/zfs2
 pve_ceph_osds:

@@ -49,12 +49,14 @@ Copy the following playbook to a file like `install_proxmox.yml`:
       become: True
       roles:
         - role: geerlingguy.ntp
+          vars:
             ntp_manage_config: true
             ntp_servers:
               - clock.sjc.he.net,
               - clock.fmt.he.net,
               - clock.nyc.he.net
         - role: lae.proxmox
+          vars:
             - pve_group: all
             - pve_reboot_on_kernel_update: true
 
@@ -426,7 +428,7 @@ PVE version. They should be IPv4 or IPv6 addresses. For more information, refer
 to the [Cluster Manager][pvecm-network] chapter in the PVE Documentation.
 
 ```
-# pve_cluster_addr0: "{{ ansible_default_ipv4.address }}"
+# pve_cluster_addr0: "{{ defaults to the default interface ipv4 or ipv6 if detected }}"
 # pve_cluster_addr1: "another interface's IP address or hostname"
 ```
 
