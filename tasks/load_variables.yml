@@ -11,4 +11,4 @@
     pve_cluster_ssh_addrs: >-
       ["{{ ansible_fqdn }}", "{{ ansible_hostname }}",
       {% for ip in ansible_all_ipv4_addresses %}"{{ip}}",{% endfor %}
-      {% for ip in ansible_all_ipv6_addresses %}{% if not ip.startswith("fe80:") %}"{{ip}}",{% endif %}{% endfor %}
+      {% for ip in ansible_all_ipv6_addresses %}{% if not ip.startswith("fe80:") %}"{{ip}}",{% endif %}{% endfor %}]
