@@ -10,5 +10,5 @@
   set_fact:
     pve_cluster_ssh_addrs: >-
       ["{{ ansible_fqdn }}", "{{ ansible_hostname }}",
-      "{{ pve_cluster_addr0 }}",
-      {% if pve_cluster_addr1 is defined %}"{{ pve_cluster_addr1 }}"{% endif %}]
+      {% for ip in ansible_all_ipv4_addresses %}"{{ip}}",{% endfor %}
+      {% for ip in ansible_all_ipv6_addresses %}{% if not ip.startswith("fe80:") %}"{{ip}}",{% endif %}{% endfor %}]

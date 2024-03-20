@@ -1,4 +1,8 @@
 ---
 pve_release_key: proxmox-ve-release-7.x.asc
 pve_release_key_id: DD4BA3917E23BF59
+
+# output from: gpg --dearmor -o - proxmox-ve-release-7.x.asc | sha1sum
+pve_release_keyring_checksum: d7e1cba9f394f16644f2443d7bcb2552c92d4b71
+
 pve_ssh_ciphers: "aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com,chacha20-poly1305@openssh.com"

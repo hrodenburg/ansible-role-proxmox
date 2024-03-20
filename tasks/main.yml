@@ -35,11 +35,14 @@
     marker: "# {mark} ANSIBLE MANAGED: Proxmox Cluster Hosts"
     content: "\
       {% for host in groups[pve_group] %}\
-        {{ hostvars[host].ip }}
+        {%- if hostvars[host].ansible_default_ipv6.address | length > 0 %}
+        {{- hostvars[host].ansible_default_ipv6.address }}
+        {%- else %}
+        {{- hostvars[host].ansible_default_ipv4.address }}
+        {%- endif %}
         {{ hostvars[host].ansible_fqdn }}
         {{ hostvars[host].ansible_hostname }}
-
-
+        
       {% endfor %}"
   when: "pve_cluster_enabled | bool and pve_manage_hosts_enabled | bool"
 
@@ -71,10 +74,19 @@
   loop: "{{ groups[pve_group] }}"
   vars:
     _correct_line: "\
-      {{ hostvars[item].ip }}
+      {%- if hostvars[item].ansible_default_ipv6.address | length > 0 %}
+      {{- hostvars[item].ansible_default_ipv6.address }}
+      {%- else %}
+      {{- hostvars[item].ansible_default_ipv4.address }}
+      {%- endif %}
       {{ hostvars[item].ansible_fqdn }}
       {{ hostvars[item].ansible_hostname }}"
-    _correct_ip: "{{ hostvars[item].ip }}"
+    _correct_ip: "
+        {%- if hostvars[item].ansible_default_ipv6.address | length > 0 %}
+        {{ hostvars[item].ansible_default_ipv6.address }}
+        {%- else %}
+        {{ hostvars[item].ansible_default_ipv4.address }}
+        {%- endif %}"
     _match_hosts: >-
       [
         "{{ hostvars[item].ansible_fqdn }}",
@@ -104,19 +116,26 @@
     name: gpg
     state: present
 
-- name: Trust Proxmox' packaging key on Debian < 12
-  apt_key:
-    data: "{{ lookup('file', pve_release_key) }}"
-    id: "{{ pve_release_key_id }}"
-    state: present
-  when: "ansible_distribution_major_version | int < 12"
+- name: Check packaging key exists
+  stat:
+    path: /etc/apt/keyrings/pve_release_key.gpg
+  register: _pve_release_key_file
 
-- name: Trust Proxmox' packaging key on Debian 12
-  copy:
-    src: "proxmox-release-{{ ansible_distribution_release }}.gpg"
-    dest: "/etc/apt/trusted.gpg.d/proxmox-release-{{ ansible_distribution_release }}.gpg"
-    mode: 0644
-  when: "ansible_distribution_major_version | int == 12"
+- name: Trust Proxmox' packaging key
+  block:
+    - name: Copy keyring file
+      copy:
+        src: "{{ pve_release_key }}"
+        dest: /tmp/pve_release_key
+
+    - name: Ensure keyrings directory exists
+      file:
+       path: /etc/apt/keyrings
+       state: directory
+    
+    - name: decrypt key in keyrings directory
+      command: gpg --dearmor -o /etc/apt/keyrings/pve_release_key.gpg /tmp/pve_release_key
+  when: _pve_release_key_file.stat.checksum is not defined or _pve_release_key_file.stat.checksum != pve_release_keyring_checksum
 
 - name: Remove os-prober package
   apt:
