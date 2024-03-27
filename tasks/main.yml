@@ -116,26 +116,37 @@
     name: gpg
     state: present
 
-- name: Check packaging key exists
-  stat:
-    path: /etc/apt/keyrings/pve_release_key.gpg
-  register: _pve_release_key_file
-
-- name: Trust Proxmox' packaging key
+- name: Ensure keyrings directory exists
+  file:
+   path: /etc/apt/keyrings
+   state: directory
+      
+- name: Trust Proxmox' packaging key on Debian < 12
   block:
-    - name: Copy keyring file
-      copy:
-        src: "{{ pve_release_key }}"
-        dest: /tmp/pve_release_key
+  - name: Check packaging key exists
+    stat:
+      path: /etc/apt/keyrings/proxmox-release-{{ ansible_distribution_release }}.gpg
+    register: _pve_release_key_file
+  
+  - name: Copy Proxmox' packaging key
+    block:
+      - name: Copy keyring file
+        copy:
+          src: "{{ pve_release_key }}"
+          dest: /tmp/pve_release_key
+  
+      - name: decrypt key in keyrings directory
+        command: gpg --dearmor -o /etc/apt/keyrings/proxmox-release-{{ ansible_distribution_release }}.gpg /tmp/pve_release_key
+    when: _pve_release_key_file.stat.checksum is not defined or _pve_release_key_file.stat.checksum != pve_release_keyring_checksum
+  when: "ansible_distribution_major_version | int < 12"
 
-    - name: Ensure keyrings directory exists
-      file:
-       path: /etc/apt/keyrings
-       state: directory
-    
-    - name: decrypt key in keyrings directory
-      command: gpg --dearmor -o /etc/apt/keyrings/pve_release_key.gpg /tmp/pve_release_key
-  when: _pve_release_key_file.stat.checksum is not defined or _pve_release_key_file.stat.checksum != pve_release_keyring_checksum
+- name:  Copy Proxmox' packaging key on Debian 12
+  copy:
+    src: "proxmox-release-{{ ansible_distribution_release }}.gpg"
+    dest: "/etc/apt/keyrings/proxmox-release-{{ ansible_distribution_release }}.gpg"
+    mode: 0644
+  when: "ansible_distribution_major_version | int == 12"
+
 
 - name: Remove os-prober package
   apt:
