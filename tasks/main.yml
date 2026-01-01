@@ -43,10 +43,13 @@
     marker: "# {mark} ANSIBLE MANAGED: Proxmox Cluster Hosts"
     content: "\
       {% for host in groups[pve_group] %}\
-        {{ hostvars[host].ip }}
+        {%- if hostvars[host].ansible_default_ipv6.address is defined and hostvars[host].ansible_default_ipv6.address | length > 0 %}
+        {{- hostvars[host].ansible_default_ipv6.address }}
+        {%- else %}
+        {{- hostvars[host].ansible_default_ipv4.address }}
+        {%- endif %}
         {{ hostvars[host].ansible_fqdn }}
         {{ hostvars[host].ansible_hostname }}
-
 
       {% endfor %}"
   when: "pve_cluster_enabled | bool and pve_manage_hosts_enabled | bool"
@@ -79,10 +82,19 @@
   loop: "{{ groups[pve_group] }}"
   vars:
     _correct_line: "\
-      {{ hostvars[item].ip }}
+      {%- if hostvars[item].ansible_default_ipv6.address is defined and hostvars[item].ansible_default_ipv6.address | length > 0 %}
+      {{- hostvars[item].ansible_default_ipv6.address }}
+      {%- else %}
+      {{- hostvars[item].ansible_default_ipv4.address }}
+      {%- endif %}
       {{ hostvars[item].ansible_fqdn }}
       {{ hostvars[item].ansible_hostname }}"
-    _correct_ip: "{{ hostvars[item].ip }}"
+    _correct_ip: "
+        {%- if hostvars[item].ansible_default_ipv6.address is defined and hostvars[item].ansible_default_ipv6.address | length > 0 %}
+        {{ hostvars[item].ansible_default_ipv6.address }}
+        {%- else %}
+        {{ hostvars[item].ansible_default_ipv4.address }}
+        {%- endif %}"
     _match_hosts: >-
       [
         "{{ hostvars[item].ansible_fqdn }}",
